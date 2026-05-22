@@ -52,14 +52,13 @@ class TouchPilotAccessibilityService : AccessibilityService() {
 
     fun tapByText(text: String): Boolean {
         val root = rootInActiveWindow ?: return false
-        val node = findNode(root) { candidate ->
-            val label = candidate.text?.toString()
-                ?: candidate.contentDescription?.toString()
-                ?: ""
-            label.contains(text, ignoreCase = true)
-        } ?: return false
-
-        return clickNodeOrParent(node)
+        val candidates = mutableListOf<Pair<AccessibilityNodeInfo, TapCandidate>>()
+        forEachNode(root) { node ->
+            candidates += node to node.toTapCandidate()
+        }
+        val target = TapTargetSelector.chooseBest(candidates, text) ?: return false
+        return clickNodeOrParent(target, maxAncestorDepth = MAX_ANCESTOR_DEPTH)
+            || tapNodeCenter(target)
     }
 
     fun tapByNodeId(nodeId: String): Boolean {
@@ -210,13 +209,25 @@ class TouchPilotAccessibilityService : AccessibilityService() {
         return current
     }
 
-    private fun clickNodeOrParent(node: AccessibilityNodeInfo): Boolean {
+    /**
+     * Try to perform a click on [node], walking up at most [maxAncestorDepth]
+     * ancestors if the node itself is not clickable. The depth cap stops the
+     * old behaviour of climbing all the way to a `Toolbar` or window root,
+     * which would silently dispatch the click to a region covering the whole
+     * screen.
+     */
+    private fun clickNodeOrParent(
+        node: AccessibilityNodeInfo,
+        maxAncestorDepth: Int = MAX_ANCESTOR_DEPTH,
+    ): Boolean {
         var current: AccessibilityNodeInfo? = node
-        while (current != null) {
+        var depth = 0
+        while (current != null && depth <= maxAncestorDepth) {
             if (current.isClickable && current.performAction(AccessibilityNodeInfo.ACTION_CLICK)) {
                 return true
             }
             current = current.parent
+            depth += 1
         }
         return false
     }
@@ -266,11 +277,67 @@ class TouchPilotAccessibilityService : AccessibilityService() {
     }
 
     private fun containsText(node: AccessibilityNodeInfo, text: String): Boolean {
+        val query = text.trim()
+        if (query.isEmpty()) return false
         return findNode(node) { candidate ->
-            val label = candidate.text?.toString()
-                ?: candidate.contentDescription?.toString()
-                ?: ""
-            label.contains(text, ignoreCase = true)
+            val label = candidate.bestLabel()
+            label.isNotBlank() && label.contains(query, ignoreCase = true)
         } != null
+    }
+
+    /**
+     * Returns the human-meaningful label for a node: its text if non-blank,
+     * otherwise its `contentDescription` (the conventional source for
+     * icon-only buttons), otherwise an empty string.
+     *
+     * The previous implementation only fell back to `contentDescription` when
+     * `text` was `null`. On modern Android, icon-only Material buttons have
+     * `text = ""` (empty, not null), so the fallback never fired and the
+     * agent could not tap them by their accessible label.
+     */
+    private fun AccessibilityNodeInfo.bestLabel(): String {
+        val text = this.text?.toString()?.trim().orEmpty()
+        if (text.isNotEmpty()) return text
+        val desc = this.contentDescription?.toString()?.trim().orEmpty()
+        return desc
+    }
+
+    /**
+     * Project a live node into a [TapCandidate]. Kept here so the selection
+     * logic in [TapTargetSelector] stays platform-free.
+     */
+    private fun AccessibilityNodeInfo.toTapCandidate(): TapCandidate {
+        val bounds = Rect().also { getBoundsInScreen(it) }
+        val isEditable = this.isEditable ||
+            this.className?.toString()?.contains("EditText", ignoreCase = true) == true
+        return TapCandidate(
+            label = bestLabel(),
+            isClickable = this.isClickable,
+            isEditable = isEditable,
+            isVisibleToUser = this.isVisibleToUser,
+            hasBounds = !bounds.isEmpty,
+        )
+    }
+
+    /** Pre-order traversal — visits every node in the subtree. */
+    private fun forEachNode(
+        node: AccessibilityNodeInfo,
+        visit: (AccessibilityNodeInfo) -> Unit,
+    ) {
+        visit(node)
+        for (index in 0 until node.childCount) {
+            val child = node.getChild(index) ?: continue
+            forEachNode(child, visit)
+        }
+    }
+
+    companion object {
+        /**
+         * Maximum number of ancestor levels [clickNodeOrParent] will walk when
+         * the matched node isn't itself clickable. Three is enough to escape a
+         * label inside a row container, but not so deep that the click ends up
+         * dispatched to a `Toolbar` or window root.
+         */
+        private const val MAX_ANCESTOR_DEPTH = 3
     }
 }
