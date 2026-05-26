@@ -66,6 +66,35 @@ class AndroidToolRetryPolicyTest {
     }
 
     @Test
+    fun clearTextSharesActionRetryConfig() {
+        val clearText = policy.configFor("clear_text")
+        assertEquals(3, clearText.maxAttempts)
+        assertEquals(250L, clearText.retryDelayMs)
+        assertEquals(1_500L, clearText.idleTimeoutMs)
+        assertTrue(clearText.waitForIdleAfterSuccess)
+    }
+
+    @Test
+    fun clearTextTransientFailureRetries() {
+        val result = ToolResult(ok = false, message = "No editable focused input is available")
+
+        val decision = policy.shouldRetry("clear_text", result, attempt = 0)
+
+        assertTrue(decision.retry)
+        assertEquals(ToolFailureCategory.RETRYABLE_TRANSIENT, decision.category)
+    }
+
+    @Test
+    fun clearTextAmbiguousFailureDoesNotRetry() {
+        val result = ToolResult(ok = false, message = "Ambiguous input target: multiple nodes")
+
+        val decision = policy.shouldRetry("clear_text", result, attempt = 0)
+
+        assertFalse(decision.retry)
+        assertEquals(ToolFailureCategory.NON_RETRYABLE, decision.category)
+    }
+
+    @Test
     fun nonRetryableToolsNeverRetry() {
         val result = ToolResult(ok = false, message = "No active window is available")
 

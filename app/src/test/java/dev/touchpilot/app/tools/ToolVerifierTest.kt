@@ -125,6 +125,71 @@ class ToolVerifierTest {
     }
 
     @Test
+    fun clearTextPassesWhenFocusedInputIsEmpty() {
+        val result = verifier.verify(
+            toolName = "clear_text",
+            args = emptyMap(),
+            result = ToolResult(ok = true, message = "clearFocusedField"),
+            before = screen(nodes = listOf(input("0", "hello", focused = true))),
+            after = screen(nodes = listOf(input("0", "", focused = true))),
+        )
+
+        assertIs<ToolVerificationResult.Passed>(result)
+    }
+
+    @Test
+    fun clearTextPassesWhenResolvedNodeIsEmpty() {
+        val result = verifier.verify(
+            toolName = "clear_text",
+            args = mapOf("target_text" to "Search"),
+            result = ToolResult(
+                ok = true,
+                message = "clearResolvedInput",
+                data = mapOf("node_id" to "0.1.2"),
+            ),
+            before = screen(nodes = listOf(input("0.1.2", "old query"))),
+            after = screen(nodes = listOf(input("0.1.2", ""))),
+        )
+
+        val passed = assertIs<ToolVerificationResult.Passed>(result)
+        assertEquals("0.1.2", passed.data["node_id"])
+    }
+
+    @Test
+    fun clearTextFailsWhenResolvedNodeStillContainsText() {
+        val result = verifier.verify(
+            toolName = "clear_text",
+            args = mapOf("target_text" to "Search"),
+            result = ToolResult(
+                ok = true,
+                message = "clearResolvedInput",
+                data = mapOf("node_id" to "0.1.2"),
+            ),
+            before = screen(nodes = listOf(input("0.1.2", "secret value"))),
+            after = screen(nodes = listOf(input("0.1.2", "secret value"))),
+        )
+
+        val failed = assertIs<ToolVerificationResult.Failed>(result)
+        assertEquals("12", failed.data["remaining_length"])
+        // The remaining contents must never leak into verification data.
+        assertFalse(failed.data.values.any { "secret value" in it })
+    }
+
+    @Test
+    fun clearTextFailsWhenNoEditableTargetIsAvailable() {
+        val result = verifier.verify(
+            toolName = "clear_text",
+            args = emptyMap(),
+            result = ToolResult(ok = true, message = "clearFocusedField"),
+            before = screen(),
+            after = screen(),
+        )
+
+        val failed = assertIs<ToolVerificationResult.Failed>(result)
+        assertTrue(failed.reason.contains("no editable input field"))
+    }
+
+    @Test
     fun skippedWhenToolAlreadyFailed() {
         val result = verifier.verify(
             toolName = "tap",

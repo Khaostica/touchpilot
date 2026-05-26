@@ -23,6 +23,7 @@ class ToolVerifier {
             "open_app" -> verifyOpenApp(args, after)
             "tap" -> verifyChangedOrFocused(before, after, "tap")
             "type_text" -> verifyTypeText(args, after)
+            "clear_text" -> verifyClearText(result, after)
             "scroll" -> verifyScroll(result, before, after)
             "press_back" -> verifyChangedOrFocused(before, after, "press_back")
             "press_home" -> verifyHome(after)
@@ -115,6 +116,53 @@ class ToolVerifier {
                 data = mapOf("text_length" to text.length.toString())
             )
         }
+    }
+
+    private fun verifyClearText(
+        result: ToolResult,
+        after: ScreenContext,
+    ): ToolVerificationResult {
+        // Prefer the resolved node id reported by the executor; otherwise fall
+        // back to whichever editable field currently holds focus.
+        val resolvedId = result.data["node_id"]?.takeIf { it.isNotBlank() }
+        val target = when {
+            resolvedId != null -> after.nodes.firstOrNull { it.nodeId == resolvedId }
+            else -> after.nodes.firstOrNull { it.focused && it.isInputField }
+        }
+
+        if (target == null) {
+            return ToolVerificationResult.Failed(
+                reason = "no editable input field is available to verify clearing",
+                data = mapOfNullable("node_id" to resolvedId)
+            )
+        }
+
+        if (!target.isInputField) {
+            return ToolVerificationResult.Failed(
+                reason = "resolved target is not an editable input field",
+                data = mapOfNullable("node_id" to target.nodeId)
+            )
+        }
+
+        val cleared = target.text.raw.isEmpty()
+        return if (cleared) {
+            ToolVerificationResult.Passed(
+                reason = "input field is empty after clear",
+                data = mapOfNullable("node_id" to target.nodeId)
+            )
+        } else {
+            // Never echo the surviving contents back to verification data — the
+            // failure path only carries lengths and ids so logs stay safe.
+            ToolVerificationResult.Failed(
+                reason = "input field still contains text after clear",
+                data = mapOfNullable("node_id" to target.nodeId) +
+                    mapOf("remaining_length" to target.text.raw.length.toString())
+            )
+        }
+    }
+
+    private fun mapOfNullable(vararg pairs: Pair<String, String?>): Map<String, String> {
+        return pairs.mapNotNull { (k, v) -> v?.let { k to it } }.toMap()
     }
 
     private fun verifyScroll(

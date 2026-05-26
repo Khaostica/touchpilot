@@ -41,6 +41,10 @@ Launch TouchPilot:
 - [x] `Open App` opens Settings by label.
 - [x] `Tap Text` taps a visible target.
 - [x] `Type Into Focused Field` enters text into a focused field.
+- [ ] `clear_text` clears the focused input field (no `target_*` args).
+- [ ] `clear_text` with a `target_*` selector clears the resolved input.
+- [ ] `clear_text` fails with an actionable message when no editable target
+      is available, and never logs the prior field contents.
 - [x] `Scroll Down` and `Scroll Up` work on a scrollable screen.
 - [x] `Back` and `Home` work.
 - [x] Medium-risk model-selected tools show inline approval prompts.
