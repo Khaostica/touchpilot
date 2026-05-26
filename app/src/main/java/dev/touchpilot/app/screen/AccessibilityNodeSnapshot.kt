@@ -36,5 +36,13 @@ data class AccessibilityNodeSnapshot(
      * currently empty.
      */
     val password: Boolean = false,
+    /**
+     * True when `AccessibilityNodeInfo.isShowingHintText()` reports that the
+     * underlying view is currently rendering its hint instead of real content.
+     * On API 26+ an empty `EditText` returns its hint via `getText()` rather
+     * than null; downstream code uses this flag to treat such nodes as empty
+     * input fields rather than treating the hint as user-entered text.
+     */
+    val showingHintText: Boolean = false,
     val children: List<AccessibilityNodeSnapshot> = emptyList()
 )

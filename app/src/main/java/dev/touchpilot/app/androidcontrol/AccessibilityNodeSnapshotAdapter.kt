@@ -58,6 +58,7 @@ internal object AccessibilityNodeSnapshotAdapter {
             checked = node.isChecked,
             editable = node.isEditable,
             password = node.isPassword,
+            showingHintText = node.isShowingHintText,
             children = children
         )
     }

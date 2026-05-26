@@ -665,6 +665,14 @@ class MainActivity : Activity() {
                 showSection(Section.TOOLS)
             }.apply { id = R.id.type_text_button }
         )
+        contentRoot.addView(
+            secondaryButton("Clear Focused Field") {
+                hideKeyboard(typeInput)
+                typeInput.requestFocus()
+                executeAndRender("clear_text", emptyMap())
+                showSection(Section.TOOLS)
+            }.apply { id = R.id.clear_text_button }
+        )
 
         val actionRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         actionRow.addView(

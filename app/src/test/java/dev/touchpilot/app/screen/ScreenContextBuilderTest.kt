@@ -89,6 +89,28 @@ class ScreenContextBuilderTest {
     }
 
     @Test
+    fun hintTextIsTreatedAsEmptyContentForEditableNodes() {
+        // On API 26+ an empty EditText returns its hint via getText(); the
+        // builder must treat such a node as empty so a freshly-cleared input
+        // surfaces as empty text instead of leaking the placeholder hint into
+        // tool verification and agent reasoning.
+        val emptyInputWithHint = AccessibilityNodeSnapshot(
+            nodeId = "0.0",
+            className = "android.widget.EditText",
+            text = "Search",
+            editable = true,
+            focused = true,
+            showingHintText = true,
+            bounds = bounds(0, 100, 1000, 200)
+        )
+        val context = builder.build(container(id = "0", children = listOf(emptyInputWithHint)))
+
+        val node = assertNotNull(context.inputFields.singleOrNull())
+        assertEquals("", node.text.raw)
+        assertTrue(node.isInputField)
+    }
+
+    @Test
     fun passwordFieldsAreFlaggedSensitiveEvenWhenEmpty() {
         val passwordInput = AccessibilityNodeSnapshot(
             nodeId = "0.0",

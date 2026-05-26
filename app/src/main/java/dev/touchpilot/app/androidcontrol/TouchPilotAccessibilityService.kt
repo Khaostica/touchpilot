@@ -13,6 +13,9 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 
+private const val ClearTextSettleMs: Long = 750L
+private const val ClearTextPollMs: Long = 50L
+
 class TouchPilotAccessibilityService : AccessibilityService() {
     override fun onServiceConnected() {
         super.onServiceConnected()
@@ -96,7 +99,8 @@ class TouchPilotAccessibilityService : AccessibilityService() {
         val focused = root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)
             ?: findNode(root) { it.isFocused }
             ?: return false
-        return setNodeText(focused, "")
+        if (!setNodeText(focused, "")) return false
+        return waitForNodeCleared(focused, timeoutMs = ClearTextSettleMs)
     }
 
     fun clearNode(nodeId: String): Boolean {
@@ -104,7 +108,35 @@ class TouchPilotAccessibilityService : AccessibilityService() {
         val node = findNodeById(root, nodeId) ?: return false
         if (!node.isEnabled || !node.isEditableTarget()) return false
         node.performAction(AccessibilityNodeInfo.ACTION_FOCUS)
-        return setNodeText(node, "")
+        if (!setNodeText(node, "")) return false
+        return waitForNodeCleared(node, timeoutMs = ClearTextSettleMs)
+    }
+
+    /**
+     * Waits until the supplied accessibility node reports an empty text value,
+     * or until [timeoutMs] elapses. ACTION_SET_TEXT dispatches synchronously
+     * but the AccessibilityNodeInfo snapshot does not refresh until the
+     * framework re-broadcasts the change, so a clear that has actually taken
+     * effect can still appear non-empty in the very next observe() call. We
+     * poll with [AccessibilityNodeInfo.refresh] so the caller only sees
+     * success once the cleared state is observable to the verifier.
+     */
+    private fun waitForNodeCleared(node: AccessibilityNodeInfo, timeoutMs: Long): Boolean {
+        val deadline = System.currentTimeMillis() + timeoutMs.coerceAtLeast(0L)
+        do {
+            node.refresh()
+            if (nodeIsCleared(node)) return true
+            Thread.sleep(ClearTextPollMs)
+        } while (System.currentTimeMillis() < deadline)
+        return nodeIsCleared(node)
+    }
+
+    private fun nodeIsCleared(node: AccessibilityNodeInfo): Boolean {
+        // An empty editable view on API 26+ surfaces its hint via getText(),
+        // so isShowingHintText() is the canonical "this field is empty" signal.
+        // Fall back to a plain emptiness check for older or non-hinting nodes.
+        if (node.isShowingHintText) return true
+        return node.text?.toString().orEmpty().isEmpty()
     }
 
     fun scroll(forward: Boolean): Boolean {

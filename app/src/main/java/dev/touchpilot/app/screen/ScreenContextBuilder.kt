@@ -63,7 +63,11 @@ class ScreenContextBuilder(
     }
 
     private fun toScreenNode(node: AccessibilityNodeSnapshot): ScreenNode {
-        val rawText = node.text?.takeIf { it.isNotBlank() }
+        // On API 26+ an empty editable view returns its hint via getText().
+        // Skip the hint so a cleared input field surfaces as empty text instead
+        // of treating the placeholder hint as user-entered content.
+        val effectiveText = if (node.showingHintText) null else node.text
+        val rawText = effectiveText?.takeIf { it.isNotBlank() }
             ?: node.contentDescription?.takeIf { it.isNotBlank() }
             ?: ""
         return ScreenNode(
